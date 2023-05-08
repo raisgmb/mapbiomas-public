@@ -1,0 +1,320 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var geometry = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[-82.33282423478884, 0.6132495370484361],
+          [-82.33282423478884, -19.063982805355074],
+          [-67.87481642228884, -19.063982805355074],
+          [-67.87481642228884, 0.6132495370484361]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var param = {
+   country :'PERU',
+   version : 6,
+   outputVersion : 6
+}
+
+var Asset = 'projects/mapbiomas-raisg/PRODUCTOS/PERU/COLECCION4/INTEGRACION/integracion-pais';
+var integracion = ee.Image(Asset + "/Integracion-PERU-"+param.version);
+
+//Paleta
+var palette = [
+    '#ffffff', // [00]      0. Ausência de dados
+    '#129912', // [01]      1. Floresta
+    '#1f4423', // [02]    1.1. Floresta Natural
+    '#006400', // [03]  1.1.1. Formação Florestal
+    '#32CD32', // [04]  1.1.2. Formação Savânica
+    '#687537', // [05]  1.1.3. Mangue
+    '#76a5af', // [06]-
+    '#29eee4', // [07]-
+    '#77a605', // [08]-
+    '#935132', // [09]    1.2. Floresta Plantada
+    '#bbfcac', // [10]      2. Formação Natural não Florestal
+    '#45c2a5', // [11]    2.1. Área Úmida Natural não Florestal
+    '#b8af4f', // [12]    2.2. Formação Campestre
+    '#f1c232', // [13]    2.5. Outra Formação não Florestal
+    '#ffffb2', // [14]      3. Agropecuária
+    '#ffd966', // [15]    3.1. Pastagem
+    '#f6b26b', // [16]-
+    '#f99f40', // [17]-
+    '#e974ed', // [18]    3.2. Agricultura
+    '#d5a6bd', // [19]  3.2.1. Lavoura Temporária
+    '#c27ba0', // [20]3.2.1.2. Cana
+    '#FFEFC3', // [21]    3.3. Mosaico de Agricultura ou Pastagem
+    '#ea9999', // [22]      4. Área não Vegetada
+    '#dd7e6b', // [23]    4.3. Praia e Duna
+    '#aa0000', // [24]    4.1. Infraestrutura Urbana //'#aa0000'
+    '#FF8585', // [25]    4.4. Outra Área não Vegetada  //'#ff0000',
+    '#0000ff', // [26]      5. Corpo D'água
+    '#d5d5e5', // [27]      6. Não Observado
+    '#dd497f', // [28]-
+    '#665A3A', // [29]    2.4. Afloramento Rochoso
+    '#FF0000', // [30]    4.2. Mineração   //'#af2a2a'
+    '#8a2be2', // [31]  5.2.3. Aquicultura
+    '#968c46', // [32]    2.3. Apicum
+    '#0000ff', // [33]    5.1. Corpo dágua Natura
+    '#4fd3ff', // [34]    5.3. Glaciais
+    '#BA6A27', // [35]-
+    '#f3b4f1', // [36]  3.2.3. Lavoura Perene
+    '#02106f', // [37]    5.2. Corpo dágua Artificial
+    '#02106f', // [38]  5.2.1. Reservatórios
+    '#c59ff4', // [39]3.2.1.1. Soja
+    '#ba87f8', // [40]3.2.1.3. Arroz
+    '#e787f8', // [41]3.2.1.4. Outros
+    '#cca0d4', // [42]3.2.2.1. Café
+    '#d082de', // [43]3.2.2.1. Citrus
+    '#cd49e4', // [44]3.2.2.1. Caju
+    '#e04cfa', // [45]3.2.2.1. Outros
+];
+    
+
+var years = [ 1985, 1986, 1987, 1988, 1989,1990, 
+              1991, 1992, 1993, 1994, 1995, 1996, 
+              1997, 1998, 1999, 2000, 2001, 2002, 
+              2003, 2004, 2005, 2006, 2007, 2008, 
+              2009, 2010, 2011, 2012, 2013, 2014, 
+              2015, 2016, 2017, 2018, 2019, 2020, 
+              2021
+              ];
+
+var assetMosaic = "projects/nexgenmap/MapBiomas2/LANDSAT/PANAMAZON/mosaics-2";
+var assetMosaicP2 = "projects/nexgenmap/MapBiomas2/LANDSAT/PANAMAZON/mosaics-pathrow-2";
+var assetRegionVector = 'projects/mapbiomas-raisg/DATOS_AUXILIARES/VECTORES/clasificacion-regiones-4';
+var assetRegionMosaicRaster = 'projects/mapbiomas-raisg/DATOS_AUXILIARES/RASTERS/clasificacion-mosaicos-4';
+var lim_country_vector ='projects/mapbiomas-raisg/DATOS_AUXILIARES/VECTOR/PERU/per-limite-Peru-1';
+var lim_country_raster ='projects/mapbiomas-raisg/DATOS_AUXILIARES/RASTERS/PERU/per-limite-Peru-1';
+
+var regionMosaicRaster  = ee.Image(assetRegionMosaicRaster).rename(['regions'])
+var regionesclasif = ee.FeatureCollection(assetRegionVector)
+
+var getMosaic = function(paths, regionRaster, Listyears) {
+  
+      // Mosaic
+      regionRaster = regionRaster.where(regionRaster.eq(211),210)
+      regionRaster = regionRaster.where(regionRaster.eq(205),210)
+      var Mosaic_coll = ee.ImageCollection(paths[0]).merge(ee.ImageCollection(paths[1]))
+                                                    .filter(ee.Filter.inList('year',Listyears))
+                        .filterMetadata('country', 'equals', param.country)
+                        .select(["swir1_median","nir_median","red_median"])
+                        .map(
+                            function (image) {
+                                return image.updateMask(
+                                    regionRaster.eq(ee.Number.parse(image.get('region_code')).toInt16()));
+                            }
+                        );
+                        
+                          
+
+      // Aditional Bands
+      var joinedMosaics = Mosaic_coll;
+                  
+      
+      // Select variables
+      return joinedMosaics;
+      
+  };
+
+var mosaicsRAISG = getMosaic([assetMosaic,assetMosaicP2], regionMosaicRaster, years);
+var country = ee.Image(lim_country_raster)
+var integracionRemap = integracion.where(integracion.eq(14), 21);
+
+Map.addLayer(regionesclasif,{},'clasificacion-regiones-4',false)
+Map.addLayer(country, {palette:'black'}, 'lim_country', false, 0.5)
+
+for (var yearI = 0; yearI < years.length; yearI++) {
+  var year = years[yearI]
+  var mosaicYear = mosaicsRAISG
+              .filterMetadata('year', 'equals', year)
+              .mosaic();
+  Map.addLayer(mosaicYear,{
+        "bands":["swir1_median","nir_median","red_median"],
+        "min":407,"max":3381}, 'Mosaic' + year,false)
+        
+  Map.addLayer(integracion.selfMask(), {
+        bands: ['classification_' + year],
+        min: 0,
+        max: 45,
+        palette: palette,
+        format: 'png'
+    },'Integracion-PERU-' + year,
+                false
+            );
+  Map.addLayer(integracionRemap.selfMask(), {
+        bands: ['classification_' + year],
+        min: 0,
+        max: 45,
+        palette: palette,
+        format: 'png'
+    },'integracionRemap-PERU-' + year,
+                false
+            );
+}
+
+
+Map.addLayer(regionesclasif.style({fillColor:'00000001',color:'000000',width:1}),{},'clasificacion-regiones-4',false)
+
+
+Export.image.toAsset({
+  'image': integracionRemap.byte(),
+  'description': 'Integracion-'+ param.country + '-' + param.outputVersion,
+  'assetId': Asset + '/' + 'Integracion-'+ param.country + '-' + param.outputVersion,
+  'pyramidingPolicy': {
+      ".default": "mode"
+  },
+  'region': geometry,
+  'scale': 30,
+  'maxPixels': 1e13
+});
+
+
+
+
+
+
+
+
+
+
+
+
+//******************************************* ESTADISTICAS ***************************************************************
+
+/**
+* @description
+*    calculate area
+* 
+* @author
+*    João Siqueira
+* 
+*/
+
+// Change the scale if you need.
+var scale = 30;
+
+// Define a list of years to export
+var years = [
+    '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992',
+    '1993', '1994', '1995', '1996', '1997', '1998', '1999', '2000',
+    '2001', '2002', '2003', '2004', '2005', '2006', '2007', '2008',
+    '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016',
+    '2017', '2018', '2019', '2020', '2021'
+];
+
+// Define a Google Drive output folder 
+var driverFolder = 'ESTADISTICAS-COL1';
+
+/**
+* 
+*/
+// Territory image
+var territory = regionMosaicRaster;
+
+// LULC mapbiomas image
+var mapbiomas = integracion.selfMask();
+
+// var vis = {
+//     'bands': 'classification_'+param.years,
+//     'min': 0,
+//     'max': 34,
+//     'palette': palettes.get('classification2')
+// };
+// Map.addLayer(mapbiomas,vis,'classification_'+param.years,false)
+
+// Image area in km2
+var pixelArea = ee.Image.pixelArea().divide(1000000);
+
+// Geometry to export
+var geometry = mapbiomas.geometry();
+// Map.addLayer(geometry)
+/**
+* Convert a complex ob to feature collection
+* @param obj 
+*/
+var convert2table = function (obj) {
+
+    obj = ee.Dictionary(obj);
+
+    var territory = obj.get('territory');
+
+    var classesAndAreas = ee.List(obj.get('groups'));
+
+    var tableRows = classesAndAreas.map(
+        function (classAndArea) {
+            classAndArea = ee.Dictionary(classAndArea);
+
+            var classId = classAndArea.get('class');
+            var area = classAndArea.get('sum');
+
+            var tableColumns = ee.Feature(null)
+                .set('territory', territory)
+                .set('class', classId)
+                .set('area', area);
+
+            return tableColumns;
+        }
+    );
+
+    return ee.FeatureCollection(ee.List(tableRows));
+};
+
+/**
+* Calculate area crossing a cover map (deforestation, mapbiomas)
+* and a region map (states, biomes, municipalites)
+* @param image 
+* @param territory 
+* @param geometry
+*/
+var calculateArea = function (image, territory, geometry) {
+
+    var reducer = ee.Reducer.sum().group(1, 'class').group(1, 'territory');
+
+    var territotiesData = pixelArea.addBands(territory).addBands(image)
+        .reduceRegion({
+            reducer: reducer,
+            geometry: geometry,
+            scale: scale,
+            maxPixels: 1e12
+        });
+
+    territotiesData = ee.List(territotiesData.get('groups'));
+
+    var areas = territotiesData.map(convert2table);
+
+    areas = ee.FeatureCollection(areas).flatten();
+
+    return areas;
+};
+
+var areas = years.map(
+    function (year) {
+        var image = mapbiomas.select('classification_' + year);
+
+        var areas = calculateArea(image, territory, geometry);
+
+        // set additional properties
+        areas = areas.map(
+            function (feature) {
+                return feature.set('year', year);
+            }
+        );
+
+        return areas;
+    }
+);
+
+areas = ee.FeatureCollection(areas).flatten();
+
+Export.table.toDrive({
+    collection: areas,
+    description: 'ESTADISTICAS-'+param.country +'-'+ param.version,  
+    folder: driverFolder,
+    fileNamePrefix: 'ESTADISTICAS-'+param.country + '-' + param.version,
+    fileFormat: 'CSV'
+});
+
+

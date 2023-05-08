@@ -1,0 +1,6 @@
+"x"
+"1" "altitude"
+"2" "hand30_5000"
+"3" "hand90_1000"
+"4" "ndbi_dry"
+"5" "ndmi_dry"

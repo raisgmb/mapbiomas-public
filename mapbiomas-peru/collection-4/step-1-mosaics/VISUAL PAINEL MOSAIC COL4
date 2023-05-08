@@ -1,0 +1,142 @@
+var param = {
+    'code_region': 70112,
+};
+
+var assetMosaic = "projects/nexgenmap/MapBiomas2/LANDSAT/PANAMAZON/mosaics-2";
+var assetRegionVector = 'projects/mapbiomas-raisg/DATOS_AUXILIARES/VECTORES/clasificacion-regiones-4';
+var assetRegionMosaicRaster = 'projects/mapbiomas-raisg/DATOS_AUXILIARES/RASTERS/mosaico-regiones-4';
+
+var regionMosaicRaster  = ee.Image(assetRegionMosaicRaster).rename(['regions'])
+          
+var regionesclasif = ee.FeatureCollection(assetRegionVector)
+                       .filterMetadata("id_regionC", "equals", param.code_region);
+print(regionMosaicRaster)
+
+  /**
+  * Get mosaics
+  * Get mosaics from collection2 asset. Then compute
+  * wetlands indexes remaining.
+  */
+var getMosaic = function(path, regionRaster, Listyears) {
+  
+      // Mosaic
+      regionRaster = regionRaster.where(regionRaster.eq(211),210)
+      regionRaster = regionRaster.where(regionRaster.eq(205),210)
+      var Mosaic_coll = ee.ImageCollection(path)
+                                                    .filter(ee.Filter.inList('year',Listyears))
+                        // .filterMetadata('country', 'equals', param.pais)
+                        // .select(['swir1_median', 'nir_median', 'red_median'])
+                        .map(
+                            function (image) {
+                                return image.updateMask(
+                                    regionRaster.eq(ee.Number.parse(image.get('region_code')).toInt16()));
+                            }
+                        );
+                        
+                          
+
+      // Aditional Bands
+      var joinedMosaics = Mosaic_coll;
+                  
+      
+      // Select variables
+      return joinedMosaics;
+      
+  };
+
+
+var years = [ 1985, 1986, 1987, 1988, 1989, 1990, 
+              1991, 1992, 1993, 1994, 1995, 1996, 
+              1997, 1998, 1999, 2000, 2001, 2002, 
+              2003, 2004, 2005, 2006, 2007, 2008, 
+              2009, 2010, 2011, 2012, 2013, 2014, 
+              2015, 2016, 2017, 2018, 2019, 2020,
+              2021
+              ];
+
+var mosaicsRAISG = getMosaic(assetMosaic, regionMosaicRaster, years);
+
+var maps = [],
+    map,
+    mosaic;
+
+for (var i = 0; i < years.length; i++) {
+ 
+    mosaic = mosaicsRAISG.filterMetadata('year', 'equals',years[i])
+                         .mosaic()
+                         .clip(regionesclasif);
+
+    map = ui.Map();
+
+    map.add(ui.Label(String(years[i]), {
+        'position': 'bottom-left',
+        'fontWeight': 'bold'
+    }));
+
+    map.addLayer(mosaic, {
+    'bands': ['swir1_median', 'nir_median', 'red_median'],
+    "min": 200,
+    "max": 4500,
+    }, years[i]+'a');
+
+   map.addLayer(regionesclasif, {
+            'palette': 'cccccc',
+            'opacity': 0.6
+        },
+        'Cartas',false
+    );
+
+    maps.push(map);
+}
+
+// blank map
+maps.push(ui.Map());
+
+var linker = ui.Map.Linker(maps);
+
+// Create a title.
+var title = ui.Label('Mosaicos of Collection 4 - Mapbiomas Amazonia-'+param.code_region, {
+    stretch: 'horizontal',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: '24px',
+
+});
+
+// Create a grid of maps.
+var mapGrid = ui.Panel([
+    ui.Panel([maps[0], maps[1], maps[2], maps[3], maps[4], maps[5], maps[6]],
+            ui.Panel.Layout.Flow('horizontal'), {
+                stretch: 'both'
+            }),
+    ui.Panel([maps[7], maps[8], maps[9], maps[10], maps[11], maps[12], maps[13]],
+            ui.Panel.Layout.Flow('horizontal'), {
+                stretch: 'both'
+            }),
+    ui.Panel([maps[14], maps[15], maps[16], maps[17], maps[18], maps[19], maps[20]],
+            ui.Panel.Layout.Flow('horizontal'), {
+                stretch: 'both'
+            }),
+     ui.Panel([maps[21], maps[22], maps[23], maps[24], maps[25], maps[26], maps[27]],
+            ui.Panel.Layout.Flow('horizontal'), {
+                stretch: 'both'
+            }),
+     ui.Panel([maps[28], maps[29], maps[30], maps[31], maps[32], maps[33], maps[34]],
+            ui.Panel.Layout.Flow('horizontal'), {
+                stretch: 'both'
+            }),
+     ui.Panel([maps[35],maps[36]],
+            ui.Panel.Layout.Flow('horizontal'), {
+                stretch: 'both'
+            }),
+  ],
+    ui.Panel.Layout.Flow('vertical'), {
+        stretch: 'both'
+    }
+);
+
+// Add the maps and title to the ui.root.
+ui.root.widgets().reset([title, mapGrid]);
+ui.root.setLayout(ui.Panel.Layout.Flow('vertical'));
+
+maps[0].centerObject(regionesclasif,8);

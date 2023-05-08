@@ -1,0 +1,271 @@
+
+var asset = 'projects/mapbiomas-raisg/PRODUCTOS/PERU/COLECCION4/INTEGRACION/integracion-pais/Integracion-PERU-6';
+var assetRaisg ='projects/mapbiomas-raisg/DATOS_AUXILIARES/VECTORES/PERU/per-limite-Peru-1';
+var integrated = ee.Image(asset);
+
+//Seleccionar los años que se necesita Descargar clasificacion de la coleccion 4
+var ExportYears=[1985,2021] 
+
+// Años a Visualizar
+var years = [
+    1985, 1986, 1987,
+    1988, 1989, 1990,
+    1991, 1992, 1993,
+    1994, 1995, 1996,
+    1997, 1998, 1999,
+    2000, 2001, 2002,
+    2003, 2004, 2005,
+    2006, 2007, 2008,
+    2009, 2010, 2011,
+    2012, 2013, 2014,
+    2015, 2016, 2017,
+    2018, 2019, 2020,
+    2021
+];
+
+// get color palettes
+var palettes = require('users/mapbiomas/modules:Palettes.js');
+
+var mapbiomasPalette = palettes.get('classification7');
+var RegionRaisg = ee.FeatureCollection(assetRaisg)
+// Visualize results
+
+
+var folderOutput = 'DOWNLOAD-MAPBIOMAS-PERU'
+
+print('integrated',integrated)
+var integrated_mos = integrated;
+
+// CLASES ANTROPICAS
+var antropic_classIn = [18,21,15,9,30,24]; 
+var antropic_classOut = [ 1, 1, 1,1, 1, 1]; 
+
+var antropic = integrated_mos.bandNames()
+    .iterate(
+        function (band, image) {
+
+            var remaped = integrated_mos.select([band])
+                .remap(antropic_classIn, antropic_classOut)
+                .rename([band]);
+
+            return ee.Image(image).addBands(remaped);
+        },
+        ee.Image().select()
+    );
+
+antropic = ee.Image(antropic);
+print('antropic',antropic);
+
+// Antropic 1986-2021
+var antropic_acc = antropic.slice(1).reduce('sum').gte(1).selfMask()
+
+
+ExportYears.forEach(function(y){
+  
+  var image = integrated_mos.select('classification_'+y).byte()  //ee.Image(0).float()
+  var region = RegionRaisg.geometry().bounds()
+  var scale = 30
+  var shardSize = 1024  // Will not really change your tile size 256
+  
+  var size = imageSize({
+      image: image,
+      region: region,
+      scale: scale, 
+      bits: 8, 
+      shardSize: shardSize
+    })
+    
+  // print(size)
+
+  size.evaluate(function (size) {
+    try {
+      Export.image.toDrive({
+        image: integrated_mos.select('classification_'+y).byte(),
+        description:'Peru-'+y, 
+        fileNamePrefix:'Peru-'+y, 
+        folder:folderOutput,
+        scale: scale,
+        maxPixels: 1e13,
+        region: region,
+        shardSize: shardSize,
+        fileDimensions: size.fileDimensions
+      });
+    } catch(e) {
+      print('ERROR: ', e);
+    }
+  });
+
+});
+
+//Map.addLayer(RegionRaisg.geometry().bounds(),{},'Bounds-Raisg',false)
+
+years.forEach(
+    function (year) {
+
+        Map.addLayer(integrated, {
+            bands: ['classification_' + year],
+            min: 0,
+            max: 62,
+            palette: mapbiomasPalette,
+            format: 'png'
+        },
+            'Peru ' + year,
+            false
+        );
+        
+        Map.addLayer(antropic, {
+            bands: ['classification_' + year],
+            min: 0,
+            max: 1,
+            palette: 'red',
+            format: 'png'
+        },
+            'Peru antropic' + year,
+            false
+        );
+        
+    }
+);
+
+
+Map.addLayer(antropic_acc,{palette: 'black'},'antropic_acc')
+
+
+  var image = antropic_acc.byte()  //ee.Image(0).float()
+  var region = RegionRaisg.geometry().bounds()
+  var scale = 30
+  var shardSize = 1024  // Will not really change your tile size 256
+  
+  var size = imageSize({
+      image: image,
+      region: region,
+      scale: scale, 
+      bits: 8, 
+      shardSize: shardSize
+    })
+    
+  // print(size)
+
+// Export acumulado antropico
+size.evaluate(function (size) {
+    try {
+      Export.image.toDrive({
+        image: antropic_acc.byte(),
+        description:'Peru-antropic_acc-'+'1986-2021', 
+        fileNamePrefix:'Peru-antropic_acc-'+'1986-2021', 
+        folder:folderOutput,
+        scale: scale,
+        maxPixels: 1e13,
+        region: region,
+        shardSize: shardSize,
+        fileDimensions: size.fileDimensions
+      });
+    } catch(e) {
+      print('ERROR antropic_acc: ', e);
+    }
+  });
+
+
+// Export antropico 1985
+size.evaluate(function (size) {
+    try {
+      Export.image.toDrive({
+        image: antropic.select('classification_'+ '1985').byte(),
+        description:'Peru-antropic-'+'1985', 
+        fileNamePrefix:'Peru-antropic-'+'1985', 
+        folder:folderOutput,
+        scale: scale,
+        maxPixels: 1e13,
+        region: region,
+        shardSize: shardSize,
+        fileDimensions: size.fileDimensions
+      });
+    } catch(e) {
+      print('ERROR antropic: ', e);
+    }
+  });
+
+
+  
+/**
+ * Calculates information about the image size.
+ * 
+ * Arguments:
+ * 
+ *   params - an object with:
+ * 
+ *     image - the ee.Image to get the size for
+ *     region - the ee.Geometry to include
+ *     scale - resolution in meters per pixel
+ *     bits - the number of bits for each band in the image
+ *       float (32-bit), double (64-bit), int (16-bit)
+ *       int8, uint8, int16, uint16, int32, uint32 
+ *       are 8-, 16-, and 32-bit, as their name hints
+ *     shardSize - size in pixels of the shards Google split your processing work into
+ * 
+ * Returns an ee.Dictionary with:
+ * 
+ *   fileDimensions - largest possible fileDimensions when exporting
+ *   fileSize - the uncompressed file size of each tile
+ *   imageDimensions - total image dimensions
+ *   imageSize - the uncompressed file size of the whole image
+ */ 
+function imageSize(params) {
+  var image = params.image
+  var region = params.region
+  var scale = params.scale || 30
+  var bits = params.bits || 64
+  var shardSize = params.shardSize || 256
+  
+  var numberOfBands = image.bandNames().size()
+  var bytesPerPixel = numberOfBands.multiply(bits).divide(8)
+  var MAX_BYTES = 17179869183
+  var MAX_SIDE = 131072
+  var maxMultipleSide = prevMultiple(MAX_SIDE, shardSize)
+  var maxPixels = ee.Number(MAX_BYTES).divide(bytesPerPixel).floor()
+  
+  var coordinates = ee.List(region.bounds().coordinates().get(0))
+  var sw = ee.Geometry.Point(coordinates.get(0))
+  var se = ee.Geometry.Point(coordinates.get(1))
+  var ne = ee.Geometry.Point(coordinates.get(2))
+  var totalWidth = sw.distance(se).divide(scale).int()
+  var totalHeight = se.distance(ne).divide(scale).int()
+  var clampedWidth = clampUp(totalWidth)
+  var clampedHeight = clampUp(totalHeight)
+  var dimensionsOptions = ee.List([
+    [clampedWidth, clampDown(maxPixels.divide(clampedWidth))],
+    [clampDown(maxPixels.divide(clampedHeight)), clampedHeight]
+  ])
+  var optionSizes = dimensionsOptions.map(function (dimensions) {
+    return ee.List(dimensions).reduce(ee.Reducer.product())
+  })
+  var dimensions = ee.List(dimensionsOptions.sort(optionSizes).get(1))
+  
+  return ee.Dictionary({
+    imageDimensions: ee.List([totalWidth, totalHeight]),
+    imageSize: bytesPerPixel.multiply(totalWidth).multiply(totalHeight),
+    fileDimensions: dimensions,
+    fileSize: bytesPerPixel.multiply(dimensions.reduce(ee.Reducer.product()))
+  })
+  
+  function clampUp(side) {
+    return nextMultiple(side).min(maxMultipleSide)
+  }
+  
+  function clampDown(side) {
+    return prevMultiple(side).min(maxMultipleSide)
+  }
+  
+  function nextMultiple(side) {
+    return ee.Number(side)
+      .divide(shardSize).ceil()
+      .multiply(shardSize)
+  }
+  
+  function prevMultiple(side) {
+    return ee.Number(side)
+      .divide(shardSize).floor()
+      .multiply(shardSize)
+  } 
+}
+
